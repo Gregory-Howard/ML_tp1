@@ -26,12 +26,14 @@ def amelioration(stat,standartStat):
 INDICES_CONTINUS = [1,2,7,10,13,14]
 INDICES_DISCRET = [0,3,4,5,6,8,9,11,12]
 
+
 ###########################################################
 #                   PARTIE 1                              #
 ###########################################################
 # Chargement des données et préparation
 df=pd.read_csv('credit.data', sep='\t')
 values = df.values
+'''
 caracteristics = values[:,0:(values.shape[1]-1)]
 target = values[:,(values.shape[1]-1)]
 caracteristics = caracteristics[:,INDICES_CONTINUS]
@@ -147,17 +149,78 @@ caracteristics_poly = np.append(caracteristics_pca, caracteristics_poly, axis=1)
 clfs_stat_comb = run_classifiers(clfs,caracteristics_poly, target)
 amelioration(clfs_stat_pca,clfs_stat_comb)
 
-
+'''
 ###########################################################
 #                   PARTIE 2                              #
 ###########################################################
 
 # TRAITEMENT DES DONNEES MANQUANTES
 
+# Transform strings to integers
+X_cat = np.copy(values[:, INDICES_DISCRET])
+X_new_cat = X_cat
+for col_id in range(len(INDICES_DISCRET)):
+    unique_val, val_idx = np.unique(X_cat[:, col_id], return_inverse=True)
+    X_new_cat[:, col_id] = val_idx
+
+    
+# Select columns that contain missing values
+replaceCols = np.any(values[:, INDICES_DISCRET]=="?", axis = 0)
+catCols = X_new_cat[:, replaceCols]
+
+# Replace missing values within categorial columns
+from sklearn.preprocessing import Imputer
+inpCat = Imputer(missing_values=0, strategy="most_frequent", axis=0)
+catCols = inpCat.fit_transform(catCols)
+
+# Replace missing values within numerical columns
+numCols = values[:, INDICES_CONTINUS]
+numCols[numCols=="?"]=np.nan
+numCols=numCols.astype(np.float)
+inpCont = Imputer(missing_values='NaN', strategy="mean", axis=0)
+inpCont.fit(numCols)
+numCols = inpCont.transform(numCols)
+
+# Agregate all categorial columns back together (columns we just replaced missing values + columns that didn't contain any)
+noUnknownCat = X_new_cat[:, ~np.any(values[:, INDICES_DISCRET]=="?", axis = 0)]
+catCols = np.hstack((catCols, noUnknownCat))
+
+
+
 # TRAITEMENT DE VARIABLES CATEGORIELLES
+# HotEncoder for categorial values
 from sklearn.preprocessing import OneHotEncoder
 enc = OneHotEncoder()
-enc.fit(values[:,INDICES_DISCRET])  
+catCols = enc.fit_transform(catCols).toarray()
+
+
 # CONSTRUCTION DE VOTRE JEU DE DONNEES
+# Reagregate all columns together
+replacedvalues = np.hstack((catCols, numCols))
+
+# Update target column to integrate lines with replaced missing values
+target = values[:, 15]
+target[target == '+'] = 1
+target[target == '-'] = 0
+
+# In case we need to re-aggregate it with all attributes columns
+#target = np.transpose(target[np.newaxis]) # Transform target to a 2d array
+
+
+
 
 # SELECTION DE VARIABLE
+
+  
+from sklearn.feature_selection import SelectKBest, mutual_info_classif
+selection = SelectKBest(k=7, score_func=mutual_info_classif)
+selected = selection.fit_transform(replacedvalues, np.asarray(target, dtype=np.int))
+
+# Print boxplot
+plt.bar(range(46), selection.scores_)
+plt.show()
+# faire des test
+
+
+
+
